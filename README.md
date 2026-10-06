@@ -1,12 +1,25 @@
 # Thread Adapter Generator
 
-Real helical threads, generated in your browser. No server, no upload.
+Turn one thread size into another with a real, printable helical screw thread — right in your browser.
 
 ![Screenshot of the app showing a rendered thread adapter](screenshot.png)
 
-## Usage
+## Getting it
 
-Open `Thread Adapter Generator.html` in any modern browser, pick the two thread sizes, and download the STL.
+Download the single file `Thread Adapter Generator.html` — that's the whole app.
+
+## Running it
+
+- **Directly:** double-click the downloaded HTML file (or drag it into a browser tab). It opens in any modern browser and works immediately.
+- **From a server:** put the HTML file on any web server or static host and open its URL. No build step, no installation, no dependencies.
+
+Everything runs **locally in your browser**. All thread geometry and STL generation are computed on your own machine — nothing is uploaded, nothing is sent to a server, and no account is needed. It even works offline once you have the file.
+
+## Using it
+
+1. Pick the two thread sizes you want to connect.
+2. Adjust the options if you like (e.g. radial clearance).
+3. Download the STL and print it.
 
 ## Printing notes
 
