@@ -42,7 +42,7 @@ button{width:100%;margin-top:14px;padding:14px;font:inherit;font-weight:700;colo
   <p id="stats" aria-live="polite"></p>
   <div id="ui"></div>
   <button id="dl">Download STL</button>
-  <p class="note">Print upright, exactly as exported (axis vertical). Right-hand threads, 60° flanks. Female threads get the radial clearance below; start with 0.2 mm for FDM and test-fit. Thread starts get a 45° lead-in chamfer sized to the thread (one thread depth) unless disabled.</p>
+  <p class="note">Print upright, exactly as exported (axis vertical). Right-hand threads, 60° flanks. Female threads get the radial clearance below; start with 0.2 mm for FDM and test-fit. Thread starts get a 45° lead-in chamfer sized to the thread (one thread depth) unless disabled. Either side can also be a screw head instead of a thread — flat, slotted, or with an allen (hex) socket; head sizes are derived from the body Ø and shown under the preview.</p>
 </main>
 
 <script>
@@ -63,10 +63,11 @@ const TH = {
 // ---------- UI ----------
 const opts = sel => Object.keys(TH).map(k => `<option${k === sel ? ' selected' : ''}>${k}</option>`).join('') + '<option value="custom">Custom…</option>';
 const side = (k, title, def, g) => `<fieldset><legend>${title}</legend>
-  <label>Thread<select id="${k}T">${opts(def)}</select></label>
+  <label>Thread size<select id="${k}T">${opts(def)}</select></label>
   <div class="row" id="${k}C" hidden><label>Major Ø mm<input id="${k}D" type="number" step="0.01" value="8"></label><label>Pitch mm<input id="${k}P" type="number" step="0.01" value="1.25"></label></div>
-  <label>End type<select id="${k}G"><option value="m"${g === 'm' ? ' selected' : ''}>Male (external)</option><option value="f"${g === 'f' ? ' selected' : ''}>Female (internal)</option></select></label>
-  <label>Thread length mm<input id="${k}L" type="number" min="4" max="50" step="1" value="15"></label></fieldset>`;
+  <label>Side<select id="${k}S"><option value="t" selected>Thread</option><option value="f">Screw head: flat</option><option value="s">Screw head: slot</option><option value="h">Screw head: allen key</option></select></label>
+  <label id="${k}Gl">End type<select id="${k}G"><option value="m"${g === 'm' ? ' selected' : ''}>Male (external)</option><option value="f"${g === 'f' ? ' selected' : ''}>Female (internal)</option></select></label>
+  <label>Length mm<input id="${k}L" type="number" min="4" max="50" step="1" value="15"></label></fieldset>`;
 $('ui').innerHTML =
   side('a', 'Side A (top)', '1/4-20 UNC', 'm') +
   side('b', 'Side B (bottom)', '3/8-16 UNC', 'f') +
@@ -87,11 +88,12 @@ function num(id, min, max, def) {
   return c;
 }
 function spec(k) {
-  const t = $(k + 'T').value;
+  const t = $(k + 'T').value, ht = $(k + 'S').value;
   let d, p, name;
   if (t === 'custom') { d = num(k + 'D', 2, 60, 8); p = num(k + 'P', .3, 6, 1.25); name = `C${d}x${p}`; }
   else { [d, p] = TH[t]; name = t.split(' ')[0]; }
-  return {d, p, h: .541 * p, g: $(k + 'G').value, len: num(k + 'L', 4, 50, 15), name};
+  if (ht !== 't') name = {f: 'flat', s: 'slot', h: 'allen'}[ht]; // head sides keep d/p only for the auto body Ø
+  return {d, p, h: .541 * p, g: $(k + 'G').value, ht, len: num(k + 'L', 4, 50, 15), name};
 }
 
 // ---------- geometry ----------
@@ -141,15 +143,47 @@ function build() {
   };
   const outBody = {key: 'ob', rad: hex ? (t => bd / 2 / Math.cos(t % (Math.PI / 3) - Math.PI / 6)) : (() => bd / 2)};
   const inBore = bore ? {key: 'ib', rad: () => bore / 2} : {key: 'iz', zero: 1, rad: () => 0};
+  const boreR = bore / 2;
+  // Drive features cut into a head's free face (inner radial functions; a head side otherwise just
+  // runs the body shape out to a flat face). Allen: hex socket, floor where it meets the bore below.
+  // Slot: the strip |y| <= w/2 removed across the face. Along a ray at angle t the material starts
+  // where the ray leaves the strip: r = w/(2*|sin t|), clipped by the body outline (the two rays
+  // along the slot axis are fully inside the strip -> inner radius equals the outer radius there).
+  const hexIn = af => ({key: 'hx', rad: t => Math.max(boreR, af / 2 / Math.cos(t % (Math.PI / 3) - Math.PI / 6))});
+  const slotIn = w => ({key: 'sl', rad: t => Math.max(boreR, Math.min(outBody.rad(t), w / (2 * Math.abs(Math.sin(t)))))});
   const sec = (s, z0, z1, top) => {
     const m = s.g === 'm', zs = top ? z1 : z0, dir = top ? -1 : 1;
     return {z0, z1, o: m ? thr(s, 0, 'o', true, zs, dir) : outBody, i: m ? inBore : thr(s, cl, 'i', false, zs, dir)};
   };
-  const segs = [sec(B, 0, zB, false), {z0: zB, z1: zC, o: outBody, i: inBore}, sec(A, zC, H, true)];
+  // A head side replaces the thread: body shape over the side's length, drive cut into the free face.
+  const head = (s, z0, z1, top) => {
+    if (s.ht === 't') return [sec(s, z0, z1, top)]; // thread side: unchanged helical thread
+    const zEnd = top ? z1 : z0;
+    let drive = null, dz = 0;
+    if (s.ht === 'h') {
+      const af = Math.min(bd - 2.5, Math.max(2, bd / 2));
+      dz = Math.min(s.len - 1, Math.max(1, af * .6));
+      drive = hexIn(af);
+      note += ` · allen socket ${af.toFixed(1)} mm AF × ${dz.toFixed(1)} mm deep`;
+    } else if (s.ht === 's') {
+      const w = Math.min(5, Math.max(1.2, bd * .15));
+      dz = Math.min(s.len - 1, Math.max(1, s.len * .4));
+      drive = slotIn(w);
+      note += ` · slot ${w.toFixed(1)} mm wide × ${dz.toFixed(1)} mm deep`;
+    }
+    if (!drive) return [{z0, z1, o: outBody, i: inBore}];
+    const zs = top ? zEnd - dz : zEnd + dz, flat = {o: outBody, i: inBore}, cut = {o: outBody, i: drive};
+    return top ? (zs > z0 + 1e-9 ? [{z0, z1: zs, ...flat}, {z0: zs, z1, ...cut}] : [{z0, z1, ...cut}])
+               : (zs < z1 - 1e-9 ? [{z0, z1: zs, ...cut}, {z0: zs, z1, ...flat}] : [{z0, z1, ...cut}]);
+  };
+  const segs = [...head(B, 0, zB, false), {z0: zB, z1: zC, o: outBody, i: inBore}, ...head(A, zC, H, true)];
 
-  // Resolution: N samples per turn AND per pitch -> the mesh diagonals follow the helix exactly
+  // Resolution: N samples per turn AND per pitch -> the mesh diagonals follow the helix exactly.
+  // Slotted heads get extra angular steps so the slot walls meet the face cleanly.
+  const turns = (A.ht === 't' ? A.len / A.p : 0) + (B.ht === 't' ? B.len / B.p : 0);
   let N = 36;
-  for (const n of [36, 24, 18, 12]) { N = n; if (2 * n * n * (A.len / A.p + B.len / B.p) < 250000) break; }
+  for (const n of [36, 24, 18, 12]) { N = n; if (2 * n * n * turns < 250000) break; }
+  if (segs.some(s => s.i.key === 'sl')) for (const n of [72, 60, 48]) { if (n > N && 2 * n * n * turns < 250000) { N = n; break; } }
 
   const pos = [], idx = [];
   const cs = [...Array(N)].map((_, i) => [Math.cos(TAU * i / N), Math.sin(TAU * i / N)]);
@@ -212,7 +246,7 @@ function build() {
   for (const [k, v] of m) { if (v !== 1 || m.get((k % nv) * nv + Math.floor(k / nv)) !== 1) { closed = false; break; } }
   const ok = closed && vol > 0;
 
-  const gt = s => s.g === 'm' ? 'male' : 'female';
+  const gt = s => s.ht === 't' ? (s.g === 'm' ? 'male' : 'female') : 'head';
   last = {P, X, name: `adapter_${A.name}-${gt(A)}_to_${B.name}-${gt(B)}.stl`.replace(/[^\w.-]+/g, '-')};
   $('stats').textContent = `Height ${H} mm · body ${hex ? 'hex AF ' : 'Ø'}${bd.toFixed(1)} mm · ${nt.toLocaleString()} triangles · ${(vol / 1000).toFixed(1)} cm³ · ` +
     (ok ? 'mesh is watertight ✓' : '⚠ mesh check failed') + note;
@@ -295,7 +329,10 @@ const schedule = c => {
 };
 $('ui').addEventListener('input', () => schedule(false));
 $('ui').addEventListener('change', () => {
-  for (const k of ['a', 'b']) $(k + 'C').hidden = $(k + 'T').value !== 'custom';
+  for (const k of ['a', 'b']) {
+    $(k + 'C').hidden = $(k + 'T').value !== 'custom';
+    $(k + 'Gl').hidden = $(k + 'S').value !== 't';
+  }
   schedule(true);
 });
 schedule(true);

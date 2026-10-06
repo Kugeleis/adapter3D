@@ -18,8 +18,9 @@ Everything runs **locally in your browser**. All thread geometry and STL generat
 ## Using it
 
 1. Pick the two thread sizes you want to connect.
-2. Adjust the options if you like (e.g. radial clearance).
-3. Download the STL and print it.
+2. Optionally turn either side into a **screw head** instead of a thread — **flat**, **slotted**, or with an **allen (hex) socket**. The head is the body shape with the drive feature cut into its flat face; drive sizes are derived from the body Ø and reported under the preview.
+3. Adjust the options if you like (e.g. radial clearance).
+4. Download the STL and print it.
 
 ## Printing notes
 
