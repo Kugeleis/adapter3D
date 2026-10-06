@@ -52,6 +52,10 @@ const TAU = Math.PI * 2;
 const TH = {
   'M3':[3,.5],'M4':[4,.7],'M5':[5,.8],'M6':[6,1],'M8':[8,1.25],'M10':[10,1.5],'M12':[12,1.75],'M16':[16,2],
   '1/4-20 UNC':[6.35,1.27],'5/16-18 UNC':[7.938,1.411],'3/8-16 UNC':[9.525,1.5875],'1/2-13 UNC':[12.7,1.954],'3/4-10 UNC':[19.05,2.54],
+  // 32-TPI constant-pitch UN series (ASME B1.1): 7/16-32 UN (UNEF for 7/16 is 28 TPI),
+  // 1/2-32 UN (UNEF size). 2B/3B are internal-fit tolerance classes only - the basic profile
+  // (depth 5H/8 = .541P) is shared with all UN threads; fit is tuned via the clearance field.
+  '7/16-32 UN (3B)':[11.1125,.79375],'1/2-32 UN (2B)':[12.7,.79375],
   'G1/8 (BSP)':[9.728,.907],'G1/4 (BSP)':[13.157,1.337],'G3/8 (BSP)':[16.662,1.337],'G1/2 (BSP)':[20.955,1.814]
 };
 
