@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thread Adapter Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+<style>
+:root{--bg:#f4f6fa;--pn:#fff;--tx:#1b2330;--mu:#5d6b82;--ac:#2563eb;--bd:#d5dbe6;--vw:#e9eef6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f141c;--pn:#18202c;--tx:#e6ebf3;--mu:#92a0b6;--ac:#3b78f0;--bd:#2b3648;--vw:#0b1018}}
+:root[data-theme="dark"]{--bg:#0f141c;--pn:#18202c;--tx:#e6ebf3;--mu:#92a0b6;--ac:#3b78f0;--bd:#2b3648;--vw:#0b1018}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:1.6rem;margin:8px 0 4px}
+.sub{color:var(--mu);margin:0 0 14px}
+#view{height:min(55vh,420px);background:var(--vw);border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+canvas{display:block}
+#stats{color:var(--mu);font-size:.9rem;margin:8px 2px 14px}
+#ui{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+fieldset{background:var(--pn);border:1px solid var(--bd);border-radius:12px;padding:12px 14px;margin:0;display:grid;gap:10px}
+legend{font-weight:700;padding:0 6px}
+label{display:grid;gap:4px;font-size:.85rem;color:var(--mu)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+select,input{width:100%;padding:10px;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px}
+select:focus,input:focus{outline:2px solid var(--ac);outline-offset:1px}
+button{width:100%;margin-top:14px;padding:14px;font:inherit;font-weight:700;color:#fff;background:var(--ac);border:0;border-radius:10px;cursor:pointer}
+.note{color:var(--mu);font-size:.85rem}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Thread Adapter Generator</h1>
+  <p class="sub">Real helical threads, generated in your browser. No server, no upload.</p>
+  <div id="view"></div>
+  <p id="stats" aria-live="polite"></p>
+  <div id="ui"></div>
+  <button id="dl">Download STL</button>
+  <p class="note">Print upright, exactly as exported (axis vertical). Right-hand threads, 60° flanks. Female threads get the radial clearance below; start with 0.2 mm for FDM and test-fit.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+
+// name: [major diameter mm, pitch mm]
+const TH = {
+  'M3':[3,.5],'M4':[4,.7],'M5':[5,.8],'M6':[6,1],'M8':[8,1.25],'M10':[10,1.5],'M12':[12,1.75],'M16':[16,2],
+  '1/4-20 UNC':[6.35,1.27],'5/16-18 UNC':[7.938,1.411],'3/8-16 UNC':[9.525,1.5875],'1/2-13 UNC':[12.7,1.954],'3/4-10 UNC':[19.05,2.54],
+  'G1/8 (BSP)':[9.728,.907],'G1/4 (BSP)':[13.157,1.337],'G3/8 (BSP)':[16.662,1.337],'G1/2 (BSP)':[20.955,1.814]
+};
+
+// ---------- UI ----------
+const opts = sel => Object.keys(TH).map(k => `<option${k === sel ? ' selected' : ''}>${k}</option>`).join('') + '<option value="custom">Custom…</option>';
+const side = (k, title, def, g) => `<fieldset><legend>${title}</legend>
+  <label>Thread<select id="${k}T">${opts(def)}</select></label>
+  <div class="row" id="${k}C" hidden><label>Major Ø mm<input id="${k}D" type="number" step="0.01" value="8"></label><label>Pitch mm<input id="${k}P" type="number" step="0.01" value="1.25"></label></div>
+  <label>End type<select id="${k}G"><option value="m"${g === 'm' ? ' selected' : ''}>Male (external)</option><option value="f"${g === 'f' ? ' selected' : ''}>Female (internal)</option></select></label>
+  <label>Thread length mm<input id="${k}L" type="number" min="4" max="50" step="1" value="15"></label></fieldset>`;
+$('ui').innerHTML =
+  side('a', 'Side A (top)', '1/4-20 UNC', 'm') +
+  side('b', 'Side B (bottom)', '3/8-16 UNC', 'f') +
+  `<fieldset><legend>Body</legend>
+  <label>Shape<select id="bs"><option value="hex">Hex (wrench flats)</option><option value="round">Round</option></select></label>
+  <label>Body length mm<input id="bl" type="number" min="4" max="100" step="1" value="12"></label>
+  <label>Ø / across flats mm (0 = auto)<input id="bd" type="number" min="0" max="100" step="0.5" value="0"></label>
+  <div class="row"><label>Bore Ø mm (0 = none)<input id="bo" type="number" min="0" max="60" step="0.5" value="0"></label>
+  <label>Female clearance mm<input id="cl" type="number" min="0" max="1" step="0.05" value="0.2"></label></div></fieldset>`;
+
+let commit = false; // only write clamped values back into the fields after editing is finished
+function num(id, min, max, def) {
+  let v = parseFloat($(id).value);
+  if (!isFinite(v)) v = def;
+  const c = Math.min(max, Math.max(min, v));
+  if (commit) $(id).value = c;
+  return c;
+}
+function spec(k) {
+  const t = $(k + 'T').value;
+  let d, p, name;
+  if (t === 'custom') { d = num(k + 'D', 2, 60, 8); p = num(k + 'P', .3, 6, 1.25); name = `C${d}x${p}`; }
+  else { [d, p] = TH[t]; name = t.split(' ')[0]; }
+  return {d, p, h: .541 * p, g: $(k + 'G').value, len: num(k + 'L', 4, 50, 15), name};
+}
+
+// ---------- geometry ----------
+// Thread profile: phase u in [0,1) along the pitch -> 0 (root) .. 1 (crest).
+// ISO-like split: crest flat 1/8, flanks 5/16 each (60°), root flat 1/4.
+const prof = u => { u -= Math.floor(u); return Math.min(1, Math.max(0, (.375 - Math.abs(u - .5)) / .3125)); };
+
+let last = null;
+
+function build() {
+  const A = spec('a'), B = spec('b');
+  const bl = num('bl', 4, 100, 12), hex = $('bs').value === 'hex', cl = num('cl', 0, 1, .2);
+  const minBd = Math.max(A.d, B.d) + 2 * cl + 4;
+  let bd = num('bd', 0, 100, 0);
+  if (bd > 0 && bd < minBd) { bd = minBd; if (commit) $('bd').value = bd.toFixed(1); }
+  if (bd === 0) bd = minBd;
+
+  let lim = bd - 4;
+  for (const s of [A, B]) if (s.g === 'm') lim = Math.min(lim, 2 * (s.d / 2 - s.h - .6));
+  let bore = num('bo', 0, 60, 0), note = '';
+  if (bore > lim) { bore = lim; note = ` · bore limited to ${lim.toFixed(1)} mm (wall thickness)`; }
+  if (bore < .8) bore = 0;
+  if (commit) $('bo').value = +bore.toFixed(2);
+
+  const zB = B.len, zC = B.len + bl, H = zC + A.len;
+
+  // Surface definitions: rad(theta, z) = radius, key = identity for merging equal neighbours
+  const thr = (s, extra, key) => ({key: key + s.name, p: s.p, rad: (t, z) => s.d / 2 - s.h + s.h * prof(z / s.p - t / TAU) + extra});
+  const outBody = {key: 'ob', rad: hex ? (t => bd / 2 / Math.cos(t % (Math.PI / 3) - Math.PI / 6)) : (() => bd / 2)};
+  const inBore = bore ? {key: 'ib', rad: () => bore / 2} : {key: 'iz', zero: 1, rad: () => 0};
+  const sec = (s, z0, z1) => ({z0, z1, o: s.g === 'm' ? thr(s, 0, 'o') : outBody, i: s.g === 'm' ? inBore : thr(s, cl, 'i')});
+  const segs = [sec(B, 0, zB), {z0: zB, z1: zC, o: outBody, i: inBore}, sec(A, zC, H)];
+
+  // Resolution: N samples per turn AND per pitch -> the mesh diagonals follow the helix exactly
+  let N = 36;
+  for (const n of [36, 24, 18, 12]) { N = n; if (2 * n * n * (A.len / A.p + B.len / B.p) < 250000) break; }
+
+  const pos = [], idx = [];
+  const cs = [...Array(N)].map((_, i) => [Math.cos(TAU * i / N), Math.sin(TAU * i / N)]);
+  const tri = (a, b, c) => { if (a !== b && b !== c && a !== c) idx.push(a, b, c); };
+  const mk = (d, z) => {
+    if (d.zero) { const id = pos.length / 3; pos.push(0, 0, z); return Array(N).fill(id); }
+    return cs.map(([x, y], i) => { const r = d.rad(TAU * i / N, z), id = pos.length / 3; pos.push(r * x, r * y, z); return id; });
+  };
+  const rings = w => {
+    const L = [];
+    const add = (z, d) => {
+      const l = L[L.length - 1];
+      if (l && Math.abs(l.z - z) < 1e-9 && l.d.key === d.key) return;
+      L.push({z, d, v: mk(d, z)});
+    };
+    for (const s of segs) {
+      const d = s[w];
+      add(s.z0, d);
+      if (d.p) { const dz = d.p / N; for (let k = 1; s.z0 + k * dz < s.z1 - 1e-6; k++) add(s.z0 + k * dz, d); }
+      add(s.z1, d);
+    }
+    return L;
+  };
+  const strip = (L, inner) => {
+    for (let k = 0; k < L.length - 1; k++) {
+      const p = L[k].v, q = L[k + 1].v;
+      for (let i = 0; i < N; i++) {
+        const j = (i + 1) % N, a = p[i], b = p[j], c = q[i], d = q[j];
+        if (inner) { tri(a, d, b); tri(a, c, d); } else { tri(a, b, d); tri(a, d, c); }
+      }
+    }
+  };
+  const cap = (o, n, top) => {
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N, a = o[i], b = o[j], c = n[i], d = n[j];
+      if (top) { tri(a, b, c); tri(b, d, c); } else { tri(a, c, b); tri(b, c, d); }
+    }
+  };
+
+  const O = rings('o'), I = rings('i');
+  strip(O, false); strip(I, true);
+  cap(O[0].v, I[0].v, false);
+  cap(O[O.length - 1].v, I[I.length - 1].v, true);
+
+  const P = new Float32Array(pos), X = new Uint32Array(idx);
+  const nv = P.length / 3, nt = X.length / 3;
+
+  // Mesh check: every directed edge appears once and its reverse once; signed volume > 0 means outward normals
+  const m = new Map();
+  let vol = 0;
+  for (let t = 0; t < X.length; t += 3) {
+    for (let e = 0; e < 3; e++) { const k = X[t + e] * nv + X[t + (e + 1) % 3]; m.set(k, (m.get(k) || 0) + 1); }
+    const a = X[t] * 3, b = X[t + 1] * 3, c = X[t + 2] * 3;
+    vol += (P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c])) / 6;
+  }
+  let closed = true;
+  for (const [k, v] of m) { if (v !== 1 || m.get((k % nv) * nv + Math.floor(k / nv)) !== 1) { closed = false; break; } }
+  const ok = closed && vol > 0;
+
+  const gt = s => s.g === 'm' ? 'male' : 'female';
+  last = {P, X, name: `adapter_${A.name}-${gt(A)}_to_${B.name}-${gt(B)}.stl`.replace(/[^\w.-]+/g, '-')};
+  $('stats').textContent = `Height ${H} mm · body ${hex ? 'hex AF ' : 'Ø'}${bd.toFixed(1)} mm · ${nt.toLocaleString()} triangles · ${(vol / 1000).toFixed(1)} cm³ · ` +
+    (ok ? 'mesh is watertight ✓' : '⚠ mesh check failed') + note;
+  show(P, X, H, bd);
+}
+
+// ---------- preview ----------
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, .1, 3000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, .9));
+const sun = new THREE.DirectionalLight(0xffffff, .8);
+sun.position.set(1, 2, 1.5);
+scene.add(sun);
+const mat = new THREE.MeshPhongMaterial({color: 0x6aa6d9, flatShading: true, shininess: 40, side: THREE.DoubleSide});
+let mesh = null, framed = false;
+
+function fit() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(fit).observe(view);
+fit();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+function show(P, X, H, bd) {
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  g.setIndex(new THREE.BufferAttribute(X, 1));
+  g.computeVertexNormals();
+  mesh = new THREE.Mesh(g, mat);
+  mesh.rotation.x = -Math.PI / 2; // part Z (print axis) -> viewer Y
+  scene.add(mesh);
+  controls.target.set(0, H / 2, 0);
+  if (!framed) { const R = Math.max(H, bd) * 1.7; camera.position.set(R * .7, H / 2 + R * .45, R); framed = true; }
+}
+
+// ---------- STL export (binary, Z-up) ----------
+function stlBlob(P, X) {
+  const n = X.length / 3, dv = new DataView(new ArrayBuffer(84 + n * 50));
+  dv.setUint32(80, n, true);
+  let o = 84;
+  for (let t = 0; t < n; t++) {
+    const a = X[3 * t] * 3, b = X[3 * t + 1] * 3, c = X[3 * t + 2] * 3;
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+    const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    for (const v of [nx / l, ny / l, nz / l, P[a], P[a + 1], P[a + 2], P[b], P[b + 1], P[b + 2], P[c], P[c + 1], P[c + 2]]) { dv.setFloat32(o, v, true); o += 4; }
+    o += 2;
+  }
+  return new Blob([dv.buffer], {type: 'model/stl'});
+}
+$('dl').onclick = () => {
+  if (!last) return;
+  const url = URL.createObjectURL(stlBlob(last.P, last.X));
+  const a = document.createElement('a');
+  a.href = url; a.download = last.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+};
+
+// ---------- wiring ----------
+let tm;
+const schedule = c => {
+  clearTimeout(tm);
+  tm = setTimeout(() => {
+    commit = c;
+    try { build(); } catch (e) { $('stats').textContent = 'Error: ' + e.message; }
+  }, c ? 0 : 120);
+};
+$('ui').addEventListener('input', () => schedule(false));
+$('ui').addEventListener('change', () => {
+  for (const k of ['a', 'b']) $(k + 'C').hidden = $(k + 'T').value !== 'custom';
+  schedule(true);
+});
+schedule(true);
+</script>
+</body>
+</html>
