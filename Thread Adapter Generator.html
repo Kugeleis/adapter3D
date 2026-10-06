@@ -30,6 +30,7 @@ select,input{width:100%;padding:10px;font:inherit;color:var(--tx);background:var
 select:focus,input:focus{outline:2px solid var(--ac);outline-offset:1px}
 button{width:100%;margin-top:14px;padding:14px;font:inherit;font-weight:700;color:#fff;background:var(--ac);border:0;border-radius:10px;cursor:pointer}
 .note{color:var(--mu);font-size:.85rem}
+#tot{color:var(--tx);font-weight:600}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -71,7 +72,7 @@ $('ui').innerHTML =
   side('b', 'Side B (bottom)', '3/8-16 UNC', 'f') +
   `<fieldset><legend>Body</legend>
   <label>Shape<select id="bs"><option value="hex">Hex (wrench flats)</option><option value="round">Round</option></select></label>
-  <label>Body length mm<input id="bl" type="number" min="4" max="100" step="1" value="12"></label>
+  <label><span>Body between threads mm · total <b id="tot"></b></span><input id="bl" type="number" min="4" max="100" step="1" value="12"></label>
   <label>Ø / across flats mm (0 = auto)<input id="bd" type="number" min="0" max="100" step="0.5" value="0"></label>
   <div class="row"><label>Bore Ø mm (0 = none)<input id="bo" type="number" min="0" max="60" step="0.5" value="0"></label>
   <label>Female clearance mm<input id="cl" type="number" min="0" max="1" step="0.05" value="0.2"></label></div>
@@ -215,6 +216,7 @@ function build() {
   last = {P, X, name: `adapter_${A.name}-${gt(A)}_to_${B.name}-${gt(B)}.stl`.replace(/[^\w.-]+/g, '-')};
   $('stats').textContent = `Height ${H} mm · body ${hex ? 'hex AF ' : 'Ø'}${bd.toFixed(1)} mm · ${nt.toLocaleString()} triangles · ${(vol / 1000).toFixed(1)} cm³ · ` +
     (ok ? 'mesh is watertight ✓' : '⚠ mesh check failed') + note;
+  $('tot').textContent = `${H.toFixed(1)} mm`;
   show(P, X, H, bd);
 }
 
