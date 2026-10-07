@@ -12,6 +12,7 @@ Download the single file `Thread Adapter Generator.html` — that's the whole ap
 
 - **Directly:** double-click the downloaded HTML file (or drag it into a browser tab). It opens in any modern browser and works immediately.
 - **From a server:** put the HTML file on any web server or static host and open its URL. No build step, no installation, no dependencies.
+- **GitHub Pages:** This repo is ready for GitHub Pages! An `index.html` file, `.nojekyll`, and a GitHub Actions deployment workflow (`.github/workflows/deploy.yml`) are included. Simply enable GitHub Pages in repository Settings under **Pages** (Source: GitHub Actions) and it will deploy automatically.
 
 Everything runs **locally in your browser**. All thread geometry and STL generation are computed on your own machine — nothing is uploaded, nothing is sent to a server, and no account is needed. It even works offline once you have the file.
 
