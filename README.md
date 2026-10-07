@@ -6,7 +6,7 @@ Turn one thread size into another with a real, printable helical screw thread �
 
 ## Getting it
 
-Download the single file `Thread Adapter Generator.html` — that's the whole app.
+Download the single file `index.html` — that's the whole app.
 
 ## Running it
 
