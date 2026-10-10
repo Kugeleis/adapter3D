@@ -6,7 +6,8 @@ Turn one thread size into another with a real, printable helical screw thread �
 
 ## Getting it
 
-Download the single file `index.html` — that's the whole app.
+Download the single file `index.html` — that's the whole app.  
+It's also hosted as Github pages: https://kugeleis.github.io/adapter3D/
 
 ## Running it
 
@@ -29,6 +30,8 @@ Everything runs **locally in your browser**. All thread geometry and STL generat
 - Right-hand threads with 60° flanks.
 - Female threads get the radial clearance you set — start with **0.2 mm** for FDM and test-fit.
 - Thread starts get a **45° lead-in chamfer** sized to the thread (one thread depth deep): male tips taper from root Ø to major Ø, female openings flare to the major Ø. Disable it with the *Chamfer thread starts* checkbox.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W0Y328ITG2)
 
 ## License
 
