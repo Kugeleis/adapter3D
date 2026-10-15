@@ -194,9 +194,20 @@ function build() {
   const pos = [], idx = [];
   const cs = angles.map(t => [Math.cos(t), Math.sin(t)]);
   const tri = (a, b, c) => { if (a !== b && b !== c && a !== c) idx.push(a, b, c); };
+  const zRingCache = new Map();
   const mk = (d, z) => {
     if (d.zero) { const id = pos.length / 3; pos.push(0, 0, z); return Array(angles.length).fill(id); }
-    return angles.map((t, i) => { const r = d.rad(t, z), id = pos.length / 3; pos.push(r * cs[i][0], r * cs[i][1], z); return id; });
+    const cacheKey = z.toFixed(6);
+    if (!zRingCache.has(cacheKey)) zRingCache.set(cacheKey, []);
+    const zList = zRingCache.get(cacheKey);
+    return angles.map((t, i) => {
+      const r = d.rad(t, z), x = r * cs[i][0], y = r * cs[i][1];
+      const match = zList.find(v => Math.hypot(v.x - x, v.y - y) < 1e-4);
+      if (match) return match.id;
+      const id = pos.length / 3; pos.push(x, y, z);
+      zList.push({x, y, id});
+      return id;
+    });
   };
   const rings = w => {
     const L = [];
@@ -218,8 +229,16 @@ function build() {
   const strip = (L, inner) => {
     for (let k = 0; k < L.length - 1; k++) {
       const p = L[k].v, q = L[k + 1].v;
+      const zMin = Math.min(L[k].z, L[k + 1].z), zMax = Math.max(L[k].z, L[k + 1].z);
+      const isVertSlot = zMax > zMin + 1e-6 && segs.some(s => s.i.key && s.i.key.startsWith('sl') && zMin >= s.z0 - 1e-6 && zMax <= s.z1 + 1e-6);
       for (let i = 0; i < angles.length; i++) {
         const j = (i + 1) % angles.length, a = p[i], b = p[j], c = q[i], d = q[j];
+        if (isVertSlot) {
+          const w = Math.min(5, Math.max(1.2, bd * .15));
+          const y1 = Math.abs(outBody.rad(angles[i]) * Math.sin(angles[i]));
+          const y2 = Math.abs(outBody.rad(angles[j]) * Math.sin(angles[j]));
+          if (y1 < w / 2 - 1e-4 || y2 < w / 2 - 1e-4) continue;
+        }
         if (inner) { tri(a, d, b); tri(a, c, d); } else { tri(a, b, d); tri(a, d, c); }
       }
     }
