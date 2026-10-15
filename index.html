@@ -66,7 +66,7 @@ const side = (k, title, def, g) => `<fieldset><legend>${title}</legend>
   <div class="row" id="${k}C" hidden><label>Major Ø mm<input id="${k}D" type="number" step="0.01" value="8"></label><label>Pitch mm<input id="${k}P" type="number" step="0.01" value="1.25"></label></div>
   <label>Side<select id="${k}S"><option value="t" selected>Thread</option><option value="f">Screw head: flat</option><option value="s">Screw head: slot</option><option value="h">Screw head: allen key</option></select></label>
   <label id="${k}Gl">End type<select id="${k}G"><option value="m"${g === 'm' ? ' selected' : ''}>Male (external)</option><option value="f"${g === 'f' ? ' selected' : ''}>Female (internal)</option></select></label>
-  <label>Length mm<input id="${k}L" type="number" min="4" max="50" step="1" value="15"></label></fieldset>`;
+  <label>Length mm<input id="${k}L" type="number" min="1" max="50" step="1" value="15"></label></fieldset>`;
 $('ui').innerHTML =
   side('a', 'Side A (top)', '1/4-20 UNC', 'm') +
   side('b', 'Side B (bottom)', '3/8-16 UNC', 'f') +
@@ -92,7 +92,10 @@ function spec(k) {
   if (t === 'custom') { d = num(k + 'D', 2, 60, 8); p = num(k + 'P', .3, 6, 1.25); name = `C${d}x${p}`; }
   else { [d, p] = TH[t]; name = t.split(' ')[0]; }
   if (ht !== 't') name = {f: 'flat', s: 'slot', h: 'allen'}[ht];
-  return {d, p, h: .541 * p, g: $(k + 'G').value, ht, len: num(k + 'L', 4, 50, 15), name};
+  const rawLen = parseFloat($(k + 'L').value);
+  let warnLen = false;
+  if (isFinite(rawLen) && rawLen < 4) { warnLen = true; }
+  return {d, p, h: .541 * p, g: $(k + 'G').value, ht, len: num(k + 'L', 4, 50, 15), warnLen, name};
 }
 
 // ---------- geometry ----------
@@ -111,10 +114,14 @@ function build() {
   if (bd > 0 && bd < minBd) { bd = minBd; if (commit) $('bd').value = bd.toFixed(1); }
   if (bd === 0) bd = minBd;
 
+  let note = '';
+  if (A.warnLen) note += ` · ⚠ Side A length < 4 mm (minimum is 4 mm)`;
+  if (B.warnLen) note += ` · ⚠ Side B length < 4 mm (minimum is 4 mm)`;
+
   let lim = bd - 4;
   for (const s of [A, B]) if (s.g === 'm') lim = Math.min(lim, 2 * (s.d / 2 - s.h - .6));
-  let bore = num('bo', 0, 60, 0), note = '';
-  if (bore > lim) { bore = lim; note = ` · bore limited to ${lim.toFixed(1)} mm (wall thickness)`; }
+  let bore = num('bo', 0, 60, 0);
+  if (bore > lim) { bore = lim; note += ` · bore limited to ${lim.toFixed(1)} mm (wall thickness)`; }
   if (bore < .8) bore = 0;
   if (commit) $('bo').value = +bore.toFixed(2);
 
@@ -160,7 +167,7 @@ function build() {
       note += ` · allen socket ${af.toFixed(1)} mm AF × ${dz.toFixed(1)} mm deep`;
     } else if (s.ht === 's') {
       const w = Math.min(5, Math.max(1.2, bd * .15));
-      dz = Math.min(s.len - 1, Math.max(1, s.len * .4));
+      dz = Math.min(s.len - 1, 2);
       drive = slotIn(w);
       note += ` · slot ${w.toFixed(1)} mm wide × ${dz.toFixed(1)} mm deep`;
     }
