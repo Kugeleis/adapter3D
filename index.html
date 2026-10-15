@@ -176,12 +176,27 @@ function build() {
   for (const n of [36, 24, 18, 12]) { N = n; if (2 * n * n * turns < 250000) break; }
   if (segs.some(s => s.i.key === 'sl')) for (const n of [72, 60, 48]) { if (n > N && 2 * n * n * turns < 250000) { N = n; break; } }
 
+  const angles = [];
+  for (let i = 0; i < N; i++) {
+    const t0 = TAU * i / N, t1 = TAU * (i + 1) / N;
+    angles.push(t0);
+    if (segs.some(s => s.i.key === 'sl')) {
+      const w = Math.min(5, Math.max(1.2, bd * .15));
+      const f = t => Math.abs(outBody.rad(t) * Math.sin(t)) - w / 2;
+      if (f(t0) * f(t1) < 0) {
+        let a = t0, b = t1;
+        for (let k = 0; k < 20; k++) { const m = (a + b) / 2; if (f(a) * f(m) <= 0) b = m; else a = m; }
+        angles.push((a + b) / 2);
+      }
+    }
+  }
+
   const pos = [], idx = [];
-  const cs = Array.from({length: N}, (_, i) => [Math.cos(TAU * i / N), Math.sin(TAU * i / N)]);
+  const cs = angles.map(t => [Math.cos(t), Math.sin(t)]);
   const tri = (a, b, c) => { if (a !== b && b !== c && a !== c) idx.push(a, b, c); };
   const mk = (d, z) => {
-    if (d.zero) { const id = pos.length / 3; pos.push(0, 0, z); return Array(N).fill(id); }
-    return cs.map(([x, y], i) => { const r = d.rad(TAU * i / N, z), id = pos.length / 3; pos.push(r * x, r * y, z); return id; });
+    if (d.zero) { const id = pos.length / 3; pos.push(0, 0, z); return Array(angles.length).fill(id); }
+    return angles.map((t, i) => { const r = d.rad(t, z), id = pos.length / 3; pos.push(r * cs[i][0], r * cs[i][1], z); return id; });
   };
   const rings = w => {
     const L = [];
@@ -203,15 +218,15 @@ function build() {
   const strip = (L, inner) => {
     for (let k = 0; k < L.length - 1; k++) {
       const p = L[k].v, q = L[k + 1].v;
-      for (let i = 0; i < N; i++) {
-        const j = (i + 1) % N, a = p[i], b = p[j], c = q[i], d = q[j];
+      for (let i = 0; i < angles.length; i++) {
+        const j = (i + 1) % angles.length, a = p[i], b = p[j], c = q[i], d = q[j];
         if (inner) { tri(a, d, b); tri(a, c, d); } else { tri(a, b, d); tri(a, d, c); }
       }
     }
   };
   const cap = (o, n, top) => {
-    for (let i = 0; i < N; i++) {
-      const j = (i + 1) % N, a = o[i], b = o[j], c = n[i], d = n[j];
+    for (let i = 0; i < angles.length; i++) {
+      const j = (i + 1) % angles.length, a = o[i], b = o[j], c = n[i], d = n[j];
       if (top) { tri(a, b, c); tri(b, d, c); } else { tri(a, c, b); tri(b, c, d); }
     }
   };
